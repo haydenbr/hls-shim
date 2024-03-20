@@ -10,6 +10,7 @@ const readdirP = promisify(readdir)
 const app = express();
 const PORT = 3000;
 const PAGE_SIZE = 10;
+const DURATION = 60;
 
 app.use(cors());
 app.use(morgan('combined'));
@@ -24,10 +25,10 @@ app.get('/playlist.m3u8', async (req, res) => {
 	let playlistTags = [
 		'#EXTM3U',
 		'#EXT-X-VERSION:11',
-		'#EXT-X-TARGETDURATION:60',
-		'#EXT-X-TYPE:LIVE',
+		`#EXT-X-TARGETDURATION:${DURATION}`,
+		'#EXT-X-PLAYLIST-TYPE:LIVE',
 		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
-		`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES`,
+		// `#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,CAN-SKIP-UNTIL=${DURATION * PAGE_SIZE}`,
 		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
