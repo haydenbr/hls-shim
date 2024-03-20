@@ -14,7 +14,6 @@ const PAGE_SIZE = 10;
 app.use(cors());
 app.use(morgan('combined'));
 
-// #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES
 app.get('/playlist.m3u8', async (req, res) => {
 	const initialTimestamp = Number(req.query.ts)
 	const nextSequenceNumber = req.query._HLS_msn ? Number(req.query._HLS_msn) : 0;
@@ -24,10 +23,11 @@ app.get('/playlist.m3u8', async (req, res) => {
 
 	let playlistTags = [
 		'#EXTM3U',
-		'#EXT-X-VERSION:9',
+		'#EXT-X-VERSION:11',
 		'#EXT-X-TARGETDURATION:60',
 		'#EXT-X-TYPE:LIVE',
 		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
+		`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES`,
 		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
