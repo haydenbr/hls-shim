@@ -24,11 +24,12 @@ app.get('/playlist.m3u8', async (req, res) => {
 
 	let playlistTags = [
 		'#EXTM3U',
-		'#EXT-X-VERSION:11',
+		'#EXT-X-VERSION:10',
 		`#EXT-X-TARGETDURATION:${DURATION}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
 		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
-		`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,CAN-SKIP-UNTIL=${DURATION * PAGE_SIZE}`,
+		`#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
+		`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES`,
 		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
@@ -44,8 +45,6 @@ app.get('/playlist.m3u8', async (req, res) => {
 
 	let playlist = playlistTags + '\n\n' + nextMediaSegments;
 
-	console.log(playlist)
-	
 	res.contentType('audio/mpegurl')
 	res.send(playlist)
 });
