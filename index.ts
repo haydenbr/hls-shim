@@ -16,7 +16,7 @@ app.use(cors());
 app.use(morgan('combined'));
 
 app.get('/playlist.m3u8', async (req, res) => {
-	const initialTimestamp = Number(req.query.ts)
+	const initialTimestamp = Number(req.query.startTime)
 	const nextSequenceNumber = req.query._HLS_msn ? Number(req.query._HLS_msn) : 0;
 
 	let nextFileTimestamps = await getNextFileTimestamps(initialTimestamp, nextSequenceNumber, PAGE_SIZE)
@@ -28,7 +28,7 @@ app.get('/playlist.m3u8', async (req, res) => {
 		`#EXT-X-TARGETDURATION:${DURATION}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
 		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
-		// `#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,CAN-SKIP-UNTIL=${DURATION * PAGE_SIZE}`,
+		`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,CAN-SKIP-UNTIL=${DURATION * PAGE_SIZE}`,
 		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
@@ -39,7 +39,7 @@ app.get('/playlist.m3u8', async (req, res) => {
 				`#EXT-X-PROGRAM-DATE-TIME:${new Date(fileTimestamp).toISOString()}`,
 				'#EXTINF:60',
 				`${fileTimestamp}.ts`,
-			].join('\n') + '\n'
+			].join('\n')
 		}, '')
 
 	let playlist = playlistTags + '\n\n' + nextMediaSegments;
