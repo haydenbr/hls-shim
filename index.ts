@@ -9,43 +9,42 @@ const readdirP = promisify(readdir)
 
 const app = express();
 const PORT = 3000;
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 5;
 const DURATION = 60;
 
 app.use(cors());
 app.use(morgan('combined'));
 
 app.get('/playlist.m3u8', async (req, res) => {
-	const initialTimestamp = Number(req.query.startTime)
-	const nextSequenceNumber = req.query._HLS_msn ? Number(req.query._HLS_msn) : 0;
+	const playFrom = Number(req.query.playFrom); // timestamp from which client wants to begin streaming recorded footage
+	const startTime = Number(req.query.startTime); // current wall-clock time at which client began viewing footage
+	const now = Date.now();
 
-	let nextFileTimestamps = await getNextFileTimestamps(initialTimestamp, nextSequenceNumber, PAGE_SIZE)
-	let startTimeOffsetSeconds = (initialTimestamp - nextFileTimestamps[0]) / 1000
+	let nextSequenceNumber = Math.round((now - startTime) / 1000 / 60);
+	let nextFileTimestamps = await getNextFileTimestamps(playFrom, nextSequenceNumber, PAGE_SIZE)
+	let startTimeOffsetSeconds = (playFrom - nextFileTimestamps[0]) / 1000
 
 	let playlistTags = [
 		'#EXTM3U',
-		'#EXT-X-VERSION:10',
+		'#EXT-X-VERSION:7',
 		`#EXT-X-TARGETDURATION:${DURATION}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
 		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
 		`#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
-		`#EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES`,
 		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
 	let nextMediaSegments = nextFileTimestamps
-		.reduce((segments, fileTimestamp) => {
-			return segments + [
-				'#EXT-X-DISCONTINUITY',
-				`#EXT-X-PROGRAM-DATE-TIME:${new Date(fileTimestamp).toISOString()}`,
-				'#EXTINF:60',
-				`${fileTimestamp}.ts`,
-			].join('\n')
-		}, '')
+		.map((fileTimestamp, i) => [
+			i > 0 || nextSequenceNumber > 0 ? '#EXT-X-DISCONTINUITY' : undefined,
+			`#EXT-X-PROGRAM-DATE-TIME:${new Date(fileTimestamp).toISOString()}`,
+			'#EXTINF:60',
+			`${fileTimestamp}.ts`,
+		].join('\n')).join('\n')
 
 	let playlist = playlistTags + '\n\n' + nextMediaSegments;
 
-	res.contentType('audio/mpegurl')
+	res.contentType('audio/mpegurl');
 	res.send(playlist)
 });
 
