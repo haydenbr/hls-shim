@@ -40,7 +40,7 @@ app.get('/playlist.m3u8', async (req, res) => {
 		.map((fileTimestamp, i) => [
 			i > 0 || nextSequenceNumber > 0 ? '#EXT-X-DISCONTINUITY' : undefined,
 			`#EXT-X-PROGRAM-DATE-TIME:${new Date(fileTimestamp).toISOString()}`,
-			'#EXTINF:60',
+			`#EXTINF:${DURATION_SEC}`,
 			`${fileTimestamp}.ts`,
 		].join('\n')).join('\n')
 
