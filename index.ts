@@ -10,7 +10,8 @@ const readdirP = promisify(readdir)
 const app = express();
 const PORT = 3000;
 const PAGE_SIZE = 5;
-const DURATION = 60;
+const DURATION_SEC = 60;
+const DURATION_MS = DURATION_SEC * 1000;
 
 app.use(cors());
 app.use(morgan('combined'));
@@ -20,14 +21,15 @@ app.get('/playlist.m3u8', async (req, res) => {
 	const currentTime = Number(req.query.currentTime); // current wall-clock time at which client began viewing footage
 	const now = Date.now();
 
-	let nextSequenceNumber = Math.round((now - currentTime) / 1000 / 60);
-	let nextFileTimestamps = await getNextFileTimestamps(startTime, nextSequenceNumber, PAGE_SIZE)
+	let nextSequenceNumber = Math.round((now - currentTime) / DURATION_MS);
+	let nextTimestamp = startTime + (nextSequenceNumber * DURATION_MS);
+	let nextFileTimestamps = await getNextFileTimestamps(nextTimestamp, PAGE_SIZE)
 	let startTimeOffsetSeconds = (startTime - nextFileTimestamps[0]) / 1000
 
 	let playlistTags = [
 		'#EXTM3U',
 		'#EXT-X-VERSION:7',
-		`#EXT-X-TARGETDURATION:${DURATION}`,
+		`#EXT-X-TARGETDURATION:${DURATION_SEC}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
 		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
 		`#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
@@ -48,7 +50,7 @@ app.get('/playlist.m3u8', async (req, res) => {
 	res.send(playlist)
 });
 
-async function getNextFileTimestamps(timestamp: number, offset: number, pageSize: number) {
+async function getNextFileTimestamps(timestamp: number, pageSize: number) {
 	return readdirP('files')
 		.then(files => files.map(f => Number(f.replace('.mp4', ''))).sort())
 		.then(timestamps => {
@@ -58,12 +60,11 @@ async function getNextFileTimestamps(timestamp: number, offset: number, pageSize
 				return []
 			}
 
-			let firstTimestampIndex = timestamp === timestamps[nextTimestampIndex]
-				? nextTimestampIndex
-				: nextTimestampIndex > 0
-					? nextTimestampIndex - 1
-					: nextTimestampIndex;
-			firstTimestampIndex += offset;
+			let firstTimestampIndex = nextTimestampIndex;
+
+			if (timestamps[nextTimestampIndex] > timestamp && nextTimestampIndex > 0) {
+				firstTimestampIndex -= 1;
+			}
 
 			return timestamps.slice(firstTimestampIndex, firstTimestampIndex + pageSize);
 		})
