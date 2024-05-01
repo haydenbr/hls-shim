@@ -16,13 +16,13 @@ app.use(cors());
 app.use(morgan('combined'));
 
 app.get('/playlist.m3u8', async (req, res) => {
-	const playFrom = Number(req.query.playFrom); // timestamp from which client wants to begin streaming recorded footage
-	const startTime = Number(req.query.startTime); // current wall-clock time at which client began viewing footage
+	const startTime = Number(req.query.startTime); // timestamp from which client wants to begin streaming recorded footage
+	const currentTime = Number(req.query.currentTime); // current wall-clock time at which client began viewing footage
 	const now = Date.now();
 
-	let nextSequenceNumber = Math.round((now - startTime) / 1000 / 60);
-	let nextFileTimestamps = await getNextFileTimestamps(playFrom, nextSequenceNumber, PAGE_SIZE)
-	let startTimeOffsetSeconds = (playFrom - nextFileTimestamps[0]) / 1000
+	let nextSequenceNumber = Math.round((now - currentTime) / 1000 / 60);
+	let nextFileTimestamps = await getNextFileTimestamps(startTime, nextSequenceNumber, PAGE_SIZE)
+	let startTimeOffsetSeconds = (startTime - nextFileTimestamps[0]) / 1000
 
 	let playlistTags = [
 		'#EXTM3U',
