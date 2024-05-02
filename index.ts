@@ -1,15 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { exec, spawn } from 'child_process'
-import { readdir } from 'fs'
-import { promisify } from 'util'
-
-const readdirP = promisify(readdir)
+import { spawn } from 'child_process'
+import { getNextFileTimestamps, sleep } from './util';
 
 const app = express();
 const PORT = 3000;
-const PAGE_SIZE = 5;
+const PAGE_SIZE = 10;
 const DURATION_SEC = 60;
 const DURATION_MS = DURATION_SEC * 1000;
 
@@ -18,12 +15,16 @@ app.use(morgan('combined'));
 
 app.get('/playlist.m3u8', async (req, res) => {
 	const startTime = Number(req.query.startTime); // timestamp from which client wants to begin streaming recorded footage
-	const currentTime = Number(req.query.currentTime); // current wall-clock time at which client began viewing footage
+	const runTime = Number(req.query.runTime ?? 0) * 1000; // current wall-clock time at which client began viewing footage
 	const now = Date.now();
 
-	let nextSequenceNumber = Math.round((now - currentTime) / DURATION_MS);
-	let nextTimestamp = startTime + (nextSequenceNumber * DURATION_MS);
-	let nextFileTimestamps = await getNextFileTimestamps(nextTimestamp, PAGE_SIZE)
+	let nextSequenceNumber = Math.round(runTime / DURATION_MS);
+	// let nextTimestamp = startTime + (nextSequenceNumber * DURATION_MS);
+	let nextFileTimestamps = await getNextFileTimestamps(startTime, nextSequenceNumber + PAGE_SIZE)
+	// console.log('going to sleep');
+	// await sleep(20_000)
+	// console.log('done sleeping');
+
 	let startTimeOffsetSeconds = (startTime - nextFileTimestamps[0]) / 1000
 
 	let playlistTags = [
@@ -31,8 +32,10 @@ app.get('/playlist.m3u8', async (req, res) => {
 		'#EXT-X-VERSION:7',
 		`#EXT-X-TARGETDURATION:${DURATION_SEC}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
-		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
-		`#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
+		// `#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
+		// `#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
+		`#EXT-X-MEDIA-SEQUENCE:0`,
+		`#EXT-X-DISCONTINUITY-SEQUENCE:0`,
 		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
@@ -50,27 +53,9 @@ app.get('/playlist.m3u8', async (req, res) => {
 	res.send(playlist)
 });
 
-async function getNextFileTimestamps(timestamp: number, pageSize: number) {
-	return readdirP('files')
-		.then(files => files.map(f => Number(f.replace('.mp4', ''))).sort())
-		.then(timestamps => {
-			let nextTimestampIndex = timestamps.findIndex(ts => ts >= timestamp);
+app.get('/:recordingTimestamp.ts', async (req, res) => {
+	// await sleep(20_000)
 
-			if (nextTimestampIndex === -1) {
-				return []
-			}
-
-			let firstTimestampIndex = nextTimestampIndex;
-
-			if (timestamps[nextTimestampIndex] > timestamp && nextTimestampIndex > 0) {
-				firstTimestampIndex -= 1;
-			}
-
-			return timestamps.slice(firstTimestampIndex, firstTimestampIndex + pageSize);
-		})
-}
-
-app.get('/:recordingTimestamp.ts', (req, res) => {
 	const recordingTimestamp = req.params.recordingTimestamp;
 
 	res.contentType('application/octet-stream')
@@ -85,7 +70,7 @@ app.get('/:recordingTimestamp.ts', (req, res) => {
 	})
 })
 
-app.use((req, res) => {
+app.use((_req, res) => {
     res.status(404).send('Not Found');
 });
 
