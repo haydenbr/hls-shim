@@ -16,27 +16,23 @@ app.get('/playlist.m3u8', async (req, res) => {
 	const currentTime = (Number(req.query.runTime ?? 0) * 1000) + startTime; // viewer's current timestamp in stream
 	const windowSize = Number(req.query.windowSize ?? DEFAULT_WINDOW_SIZE)
 
-	// I won't know next sequence number until I get all recordings and can count them.
-	// let nextSequenceNumber = Math.round(runTime / DURATION_MS);
-	// let nextTimestamp = startTime + (nextSequenceNumber * DURATION_MS);
-	let nextFileTimestamps = await getRecordings(startTime, currentTime + windowSize);
-	let startTimeOffsetSeconds = (startTime - nextFileTimestamps[0].start) / 1000;
-	let targetDuration = Math.max(...nextFileTimestamps.map(r => r.end - r.start)) / 1000;
+	let recordings = await getRecordings(startTime, currentTime + windowSize);
+	let startTimeOffsetSeconds = (startTime - recordings[0].start) / 1000;
+	let targetDuration = Math.max(...recordings.map(r => r.end - r.start)) / 1000;
+	let nextSequenceNumber = recordings.findIndex(r => r.start <= currentTime && currentTime <= r.end);
 
 	let playlistTags = [
 		'#EXTM3U',
 		'#EXT-X-VERSION:7',
 		`#EXT-X-TARGETDURATION:${targetDuration}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
-		// `#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
-		// `#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
-		`#EXT-X-MEDIA-SEQUENCE:0`,
-		`#EXT-X-DISCONTINUITY-SEQUENCE:0`,
-		// nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
-		`#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES`,
+		`#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
+		`#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
+		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
 	].filter(Boolean).join('\n')
 
-	let nextMediaSegments = nextFileTimestamps
+	let nextMediaSegments = recordings
+		.filter(r => r.end >= currentTime)
 		.map((r) => [
 			'#EXT-X-DISCONTINUITY',
 			`#EXT-X-PROGRAM-DATE-TIME:${new Date(r.start).toISOString()}`,
