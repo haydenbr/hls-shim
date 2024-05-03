@@ -1,26 +1,30 @@
 import { readdir } from 'fs'
 import { promisify } from 'util'
-
 const readdirP = promisify(readdir)
 
-export function getNextFileTimestamps(timestamp: number, pageSize: number): Promise<number[]> {
+type Recording = {
+	start: number,
+	end: number,
+	name: string
+}
+
+export function getRecordings(startTime: number, endTime: number): Promise<Recording[]> {
 	return readdirP('files')
-		.then(files => files.map(f => Number(f.replace('.mp4', ''))).sort())
-		.then(timestamps => {
-			let nextTimestampIndex = timestamps.findIndex(ts => ts >= timestamp);
+		.then(files => files
+			.map(f => Number(f.replace('.mp4', '')))
+			.sort()
+			.reduce<Recording[]>((agg, ts, i, array) => {
+				if (i < array.length - 1) {
+					let start = ts;
+					let end = array[i + 1];
 
-			if (nextTimestampIndex === -1) {
-				return []
-			}
+					agg.push({ start, end, name: start.toString() })
+				}
 
-			let firstTimestampIndex = nextTimestampIndex;
-
-			if (timestamps[nextTimestampIndex] > timestamp && nextTimestampIndex > 0) {
-				firstTimestampIndex -= 1;
-			}
-
-			return timestamps.slice(firstTimestampIndex, firstTimestampIndex + pageSize);
-		})
+				return agg
+			}, [])
+			.filter(r => r.end > startTime && r.start <= endTime)
+		)
 }
 
 export function sleep(sleepMs: number): Promise<void> {

@@ -2,49 +2,46 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import { spawn } from 'child_process'
-import { getNextFileTimestamps, sleep } from './util';
+import { getRecordings } from './util';
 
 const app = express();
 const PORT = 3000;
-const PAGE_SIZE = 10;
-const DURATION_SEC = 60;
-const DURATION_MS = DURATION_SEC * 1000;
+const DEFAULT_WINDOW_SIZE = 300_000;
 
 app.use(cors());
 app.use(morgan('combined'));
 
 app.get('/playlist.m3u8', async (req, res) => {
 	const startTime = Number(req.query.startTime); // timestamp from which client wants to begin streaming recorded footage
-	const runTime = Number(req.query.runTime ?? 0) * 1000; // current wall-clock time at which client began viewing footage
-	const now = Date.now();
+	const currentTime = (Number(req.query.runTime ?? 0) * 1000) + startTime; // viewer's current timestamp in stream
+	const windowSize = Number(req.query.windowSize ?? DEFAULT_WINDOW_SIZE)
 
-	let nextSequenceNumber = Math.round(runTime / DURATION_MS);
+	// I won't know next sequence number until I get all recordings and can count them.
+	// let nextSequenceNumber = Math.round(runTime / DURATION_MS);
 	// let nextTimestamp = startTime + (nextSequenceNumber * DURATION_MS);
-	let nextFileTimestamps = await getNextFileTimestamps(startTime, nextSequenceNumber + PAGE_SIZE)
-	// console.log('going to sleep');
-	// await sleep(20_000)
-	// console.log('done sleeping');
-
-	let startTimeOffsetSeconds = (startTime - nextFileTimestamps[0]) / 1000
+	let nextFileTimestamps = await getRecordings(startTime, currentTime + windowSize);
+	let startTimeOffsetSeconds = (startTime - nextFileTimestamps[0].start) / 1000;
+	let targetDuration = Math.max(...nextFileTimestamps.map(r => r.end - r.start)) / 1000;
 
 	let playlistTags = [
 		'#EXTM3U',
 		'#EXT-X-VERSION:7',
-		`#EXT-X-TARGETDURATION:${DURATION_SEC}`,
+		`#EXT-X-TARGETDURATION:${targetDuration}`,
 		'#EXT-X-PLAYLIST-TYPE:LIVE',
 		// `#EXT-X-MEDIA-SEQUENCE:${nextSequenceNumber}`,
 		// `#EXT-X-DISCONTINUITY-SEQUENCE:${nextSequenceNumber}`,
 		`#EXT-X-MEDIA-SEQUENCE:0`,
 		`#EXT-X-DISCONTINUITY-SEQUENCE:0`,
-		nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
+		// nextSequenceNumber === 0 ? `#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES` : undefined,
+		`#EXT-X-START:TIME-OFFSET=${startTimeOffsetSeconds},PRECISE=YES`,
 	].filter(Boolean).join('\n')
 
 	let nextMediaSegments = nextFileTimestamps
-		.map((fileTimestamp, i) => [
-			i > 0 || nextSequenceNumber > 0 ? '#EXT-X-DISCONTINUITY' : undefined,
-			`#EXT-X-PROGRAM-DATE-TIME:${new Date(fileTimestamp).toISOString()}`,
-			`#EXTINF:${DURATION_SEC}`,
-			`${fileTimestamp}.ts`,
+		.map((r) => [
+			'#EXT-X-DISCONTINUITY',
+			`#EXT-X-PROGRAM-DATE-TIME:${new Date(r.start).toISOString()}`,
+			`#EXTINF:${(r.end - r.start) / 1000}`,
+			`${r.name}.ts`,
 		].join('\n')).join('\n')
 
 	let playlist = playlistTags + '\n\n' + nextMediaSegments;
