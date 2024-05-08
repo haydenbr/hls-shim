@@ -1,6 +1,6 @@
-import { readdir } from 'fs'
-import { promisify } from 'util'
-const readdirP = promisify(readdir)
+import { ReadStream, WriteStream } from 'fs'
+import { readdir } from 'fs/promises'
+import { file as tmpFile } from 'tmp'
 
 type Recording = {
 	start: number,
@@ -9,7 +9,7 @@ type Recording = {
 }
 
 export function getRecordings(startTime: number, endTime: number): Promise<Recording[]> {
-	return readdirP('files')
+	return readdir('files')
 		.then(files => files
 			.map(f => Number(f.replace('.mp4', '')))
 			.sort()
@@ -29,4 +29,31 @@ export function getRecordings(startTime: number, endTime: number): Promise<Recor
 
 export function sleep(sleepMs: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(() => { resolve() }, sleepMs))
+}
+
+export function createTmpFile(): Promise<[ path: string, fd: number, dispose: () => void ]> {
+	return new Promise((resolve, reject) => {
+		tmpFile((err, path, fd, dispose) => {
+			if (err) {
+				reject(err)
+			} else {
+				resolve([ path, fd, dispose ])
+			}
+		})
+	})
+}
+
+export function pipeAsync(src: ReadStream, dst: WriteStream): Promise<void> {
+	return new Promise((resolve, reject) => {
+		src.pipe(dst)
+			
+		dst.on('finish', () => dst.close((err) => {
+			if (err) {
+				reject(err)
+			} else {
+				resolve()
+			}
+		}))
+		dst.on('error', reject)
+	})
 }

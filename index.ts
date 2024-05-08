@@ -2,7 +2,8 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import { spawn } from 'child_process'
-import { getRecordings } from './util';
+import { createTmpFile, getRecordings, pipeAsync } from './util';
+import { createReadStream, createWriteStream } from 'fs'
 
 const app = express();
 const PORT = 3000;
@@ -40,27 +41,38 @@ app.get('/playlist.m3u8', async (req, res) => {
 			`${r.name}.ts`,
 		].join('\n')).join('\n')
 
-	let playlist = playlistTags + '\n\n' + nextMediaSegments;
+	let playlist = playlistTags + '\n' + nextMediaSegments;
 
 	res.contentType('audio/mpegurl');
 	res.send(playlist)
 });
 
 app.get('/:recordingTimestamp.ts', async (req, res) => {
-	// await sleep(20_000)
-
 	const recordingTimestamp = req.params.recordingTimestamp;
 
 	res.contentType('application/octet-stream')
 
-	let [command, ...args] = `ffmpeg -loglevel error -i files/${recordingTimestamp}.mp4 -codec copy -bsf:v h264_mp4toannexb -f mpegts -`.split(' ')
-	let ffmpegProcess = spawn(command, args)
+	const [ tmpPath, tmpFd, disposeTmp ] = await createTmpFile()
+	const tmpWriteStream = createWriteStream('', { fd: tmpFd })
+	const fileReadStream = createReadStream(`files/${recordingTimestamp}.mp4`);
 
-	ffmpegProcess.stdout.pipe(res)
+	await pipeAsync(fileReadStream, tmpWriteStream)
+	console.log('done piping')
 
-	ffmpegProcess.on('exit', () => {
+	let [command, ...args] = `ffmpeg -loglevel error -i ${tmpPath} -codec copy -bsf:v h264_mp4toannexb -f mpegts -`.split(' ')
+	let ffmpeg = spawn(command, args)
+	console.log('spawned')
+
+	ffmpeg.stdout.pipe(res)
+
+	ffmpeg.on('exit', () => {
+		disposeTmp()
 		res.end();
 	})
+
+	ffmpeg.stderr.on('data', (data) => {
+		console.error('ffmpeg stderr:', data.toString());
+	});
 })
 
 app.use((_req, res) => {
