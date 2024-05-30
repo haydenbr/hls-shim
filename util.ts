@@ -1,5 +1,7 @@
-import { ReadStream, WriteStream } from 'fs'
+import { spawn } from 'child_process'
+import { WriteStream } from 'fs'
 import { readdir } from 'fs/promises'
+import { Readable } from 'stream'
 import { file as tmpFile } from 'tmp'
 
 type Recording = {
@@ -43,7 +45,7 @@ export function createTmpFile(): Promise<[ path: string, fd: number, dispose: ()
 	})
 }
 
-export function pipeAsync(src: ReadStream, dst: WriteStream): Promise<void> {
+export function pipeToFileAsync(src: Readable, dst: WriteStream): Promise<void> {
 	return new Promise((resolve, reject) => {
 		src.pipe(dst)
 			
@@ -56,4 +58,19 @@ export function pipeAsync(src: ReadStream, dst: WriteStream): Promise<void> {
 		}))
 		dst.on('error', reject)
 	})
+}
+
+export function spawnAsync(
+	cmd: string
+): [stdout: Readable, result: Promise<void>] {
+	const [command, ...args] = cmd.split(' ');
+	const process = spawn(command, args);
+
+	return [
+		process.stdout,
+		new Promise((resolve, reject) => {
+			process.on('exit', resolve);
+			process.stderr.on('data', err => reject(new Error(err.toString())))
+		}),
+	]
 }

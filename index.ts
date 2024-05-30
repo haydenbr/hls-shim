@@ -1,8 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import { spawn } from 'child_process'
-import { createTmpFile, getRecordings, pipeAsync } from './util';
+import { createTmpFile, getRecordings, pipeToFileAsync, spawnAsync } from './util';
 import { createReadStream, createWriteStream } from 'fs'
 
 const app = express();
@@ -41,7 +40,7 @@ app.get('/playlist.m3u8', async (req, res) => {
 			`${r.name}.ts`,
 		].join('\n')).join('\n')
 
-	let playlist = playlistTags + '\n' + nextMediaSegments;
+	let playlist = playlistTags + '\n\n' + nextMediaSegments;
 
 	res.contentType('audio/mpegurl');
 	res.send(playlist)
@@ -52,27 +51,33 @@ app.get('/:recordingTimestamp.ts', async (req, res) => {
 
 	res.contentType('application/octet-stream')
 
-	const [ tmpPath, tmpFd, disposeTmp ] = await createTmpFile()
-	const tmpWriteStream = createWriteStream('', { fd: tmpFd })
 	const fileReadStream = createReadStream(`files/${recordingTimestamp}.mp4`);
+	
+	const [tmpPath, tmpFd, disposeTmp] = await createTmpFile()
+	const tmpWriteStream = createWriteStream('', { fd: tmpFd })
 
-	await pipeAsync(fileReadStream, tmpWriteStream)
-	console.log('done piping')
+	await pipeToFileAsync(fileReadStream, tmpWriteStream)
 
-	let [command, ...args] = `ffmpeg -loglevel error -i ${tmpPath} -codec copy -bsf:v h264_mp4toannexb -f mpegts -`.split(' ')
-	let ffmpeg = spawn(command, args)
-	console.log('spawned')
+	const [stdout, result] = spawnAsync(`ffmpeg -loglevel error -i ${tmpPath} -codec copy -bsf:v h264_mp4toannexb -f mpegts -`)
+	stdout.pipe(res)
 
-	ffmpeg.stdout.pipe(res)
-
-	ffmpeg.on('exit', () => {
+	result.finally(() => {
 		disposeTmp()
-		res.end();
+		res.end()
 	})
+	// let [command, ...args] = `ffmpeg -loglevel error -i ${tmpPath} -codec copy -bsf:v h264_mp4toannexb -f mpegts -`.split(' ')
+	// let ffmpeg = spawn(command, args)
 
-	ffmpeg.stderr.on('data', (data) => {
-		console.error('ffmpeg stderr:', data.toString());
-	});
+	// ffmpeg.stdout.pipe(res)
+
+	// ffmpeg.on('exit', () => {
+	// 	disposeTmp()
+	// 	res.end();
+	// })
+
+	// ffmpeg.stderr.on('data', (data) => {
+	// 	console.error('ffmpeg stderr:', data.toString());
+	// });
 })
 
 app.use((_req, res) => {
